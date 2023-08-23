@@ -1,6 +1,4 @@
-<script lang="ts">
-  import { metadata } from "$lib/app/stores";
-  $metadata.title = "Home";
-</script>
-
-<a href="/hello">hello</a>
+<main class="prose mx-auto max-w-xl">
+  <h1>Hello</h1>
+  <p>This is a web page.</p>
+</main>
