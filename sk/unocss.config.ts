@@ -4,6 +4,7 @@ import {
   presetTypography,
   presetIcons,
   transformerVariantGroup,
+  transformerDirectives,
 } from 'unocss';
 import extractorSvelte from '@unocss/extractor-svelte';
 
@@ -19,5 +20,5 @@ export default defineConfig({
       },
     }),
   ],
-  transformers: [transformerVariantGroup()],
+  transformers: [transformerVariantGroup(), transformerDirectives()],
 });

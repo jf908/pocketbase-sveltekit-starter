@@ -2,17 +2,24 @@ import PocketBase, { ListResult, Record as PBRecord, type Admin, Record } from '
 import { readable, type Readable, type Subscriber } from 'svelte/store';
 import { browser } from '$app/environment';
 import { base } from '$app/paths';
-import { dev } from '$app/environment';
 
-export const pb = new PocketBase(
-  browser ? (dev ? 'http://127.0.0.1:8090' : window.location.origin + '/' + base) : undefined
-);
+export const pb = new PocketBase(browser ? window.location.origin + '/' + base : undefined);
 
-export const authModel = readable<PBRecord | Admin | null>(null, function (set) {
+// Assumes no login as admin
+export const authModel = readable<PBRecord | null>(null, function (set) {
   pb.authStore.onChange((token, model) => {
-    set(model);
+    set(model as PBRecord | null);
   }, true);
 });
+
+// Auto refresh incase it's expired
+if (pb.authStore.isValid) {
+  pb.collection('users')
+    .authRefresh()
+    .catch(() => {
+      pb.authStore.clear();
+    });
+}
 
 /*
  * Save (create/update) a record (a plain object). Automatically converts to
@@ -69,10 +76,17 @@ export interface PageStore<T = any> extends Readable<ListResult<T>> {
 export function watch<T extends { id?: string }>(
   idOrName: string,
   queryParams = {} as any,
-  additionalSubscriptions?: { collection: string; key: string }[],
+  {
+    additionalSubscriptions,
+    overrideSubscriptionCollection,
+    updateFilter,
+  }: {
+    additionalSubscriptions?: { collection: string; key: string }[];
+    updateFilter?: (record: T) => boolean;
+    overrideSubscriptionCollection?: string;
+  } = {},
   page = 1,
-  perPage = 20,
-  overrideSubscriptionCollection?: string
+  perPage = 20
 ): PageStore<T> {
   const collection = pb.collection(idOrName);
   let result = new ListResult(page, perPage, 0, 0, [] as T[]);
@@ -86,7 +100,11 @@ export function watch<T extends { id?: string }>(
     // watch for changes (only if you're in the browser)
     if (browser) {
       async function expand(expand: any, record: any) {
-        return expand ? await collection.getOne(record.id, { expand }) : record;
+        const params: any = { expand };
+        if (queryParams.$cancelKey) {
+          params.$cancelKey = queryParams.$cancelKey;
+        }
+        return expand ? await collection.getOne(record.id, params) : record;
       }
       (overrideSubscriptionCollection ? pb.collection(overrideSubscriptionCollection) : collection)
         .subscribe<T>('*', ({ action, record }) => {
@@ -95,6 +113,11 @@ export function watch<T extends { id?: string }>(
             switch (action) {
               case 'update':
                 record = await expand(queryParams.expand, record);
+
+                if (updateFilter && !updateFilter(record)) {
+                  return result.items.filter((item) => item.id !== record.id);
+                }
+
                 return result.items.map((item) => (item.id === record.id ? record : item));
               case 'create':
                 record = await expand(queryParams.expand, record);
